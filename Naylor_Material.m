@@ -17,7 +17,7 @@ classdef Naylor_Material < handle  % objects by reference, handle class
     end
     
     methods(Static)
-        function [local_step_idx, global_step_idx] = step_changer(Data, starting_idx, ss_index, smooth_opt, span)
+        function [RH_step_and_steady_state_idx, RH_step_idx] = step_changer(Data, starting_idx, ss_index, smooth_opt, span)
             %{
 
         Arg2: starting_idx: occasionaly largest derivative is not actual time step and needs custom idx 
@@ -52,22 +52,22 @@ classdef Naylor_Material < handle  % objects by reference, handle class
         for j=1:length(reversed_data)
 
             if abs(reversed_data(j)) < step_change
-               step_idx = j;
+               step_idx = (j - 1) ;
                break
             end
         end
         
 %         local_step_idx = max_idx - step_idx;  % local to starting idx being truncated  (already takes into accout of starting index)
 %         local_step_idx = [];
+        
+        RH_step_idx = max_idx - step_idx + (starting_idx);  % when starting idx is 1 and greater. (corrects idx for double peaks)
+        RH_step_and_steady_state_idx = RH_step_idx - ss_index;  % number of steps to go back before step change
+        
+        
+%         global_step_idx = max_idx - step_idx;  % relative to the entire array
 %         
-%         global_step_idx = max_idx - step_idx + (starting_idx);  % when starting idx is 1 and greater. (corrects idx for double peaks)
-%         global_impose_idx = global_step_idx - ss_index;  % number of steps to go back before step change
-        
-        
-        global_step_idx = max_idx - step_idx;  % relative to the entire array
-        
-        local_step_idx = max_idx - step_idx + (starting_idx - 1);  % when starting idx is 1 and greater. (corrects idx for double peaks)
-        local_step_idx = local_step_idx - ss_index;  % number of steps to go back before step change
+%         local_step_idx = max_idx - step_idx + (starting_idx - 1);  % when starting idx is 1 and greater. (corrects idx for double peaks)
+%         local_step_idx = local_step_idx - ss_index;  % number of steps to go back before step change
         end 
         
     
@@ -143,34 +143,37 @@ classdef Naylor_Material < handle  % objects by reference, handle class
         function RH_Indices_And_Plot(obj)
         %UNTITLED4 Summary of this function goes here
         %   Detailed explanation goes here
-        RH_step_idx_Local = zeros(1, obj.file_count);
-        RH_step_idx_Global = zeros(1, obj.file_count);
+        RH_step_and_steady_state_idx = zeros(1, obj.file_count);
+        RH_step_idx = zeros(1, obj.file_count);
 
         for i =1:obj.file_count 
-             [RH_step_idx_Local(1,i), RH_step_idx_Global(1,i)] = Naylor_Material.step_changer(obj.Replicate(i).Data.RH,  obj.Replicate(i).Data.starting_index , obj.Replicate(i).Data.steady_state_index, obj.Replicate(i).Data.option_smooth_import_data, []);
-             obj.Replicate(i).Data.RH_step_idx_Local = RH_step_idx_Local(1,i);
-             obj.Replicate(i).Data.RH_step_idx_Global = RH_step_idx_Global(1,i);
-             obj.Replicate(i).Data.RH_step_time_Local = obj.Replicate(i).Data.Time(RH_step_idx_Local(1,i), 1) ;
-             obj.Replicate(i).Data.RH_step_time_Global = obj.Replicate(i).Data.Time(RH_step_idx_Global(1,i), 1) ;
+             [RH_step_and_steady_state_idx(1,i), RH_step_idx(1,i)] = Naylor_Material.step_changer(obj.Replicate(i).Data.RH,  obj.Replicate(i).Data.starting_index , obj.Replicate(i).Data.steady_state_index, obj.Replicate(i).Data.option_smooth_import_data, []);
+             obj.Replicate(i).Data.RH_step_idx = RH_step_idx(1,i);
+             obj.Replicate(i).Data.RH_step_and_steady_state_idx = RH_step_and_steady_state_idx(1,i);
+             obj.Replicate(i).Data.RH_step_time = obj.Replicate(i).Data.Time(RH_step_idx(1,i), 1) ;
+             obj.Replicate(i).Data.RH_step_and_steady_state_time = obj.Replicate(i).Data.Time(RH_step_and_steady_state_idx(1,i), 1) ;
         end 
 
         figure(3); clf;
         hold on
         for i =1:obj.file_count
-            plot(obj.Replicate(i).Data.Time(RH_step_idx_Local(1, i):end, 1), obj.Replicate(i).Data.RH(RH_step_idx_Local(1, i):end,1),"LineWidth",1.75, "DisplayName", obj.Replicate(i).Data.file_name)
+            plot(obj.Replicate(i).Data.Time(RH_step_and_steady_state_idx(1, i):end, 1), obj.Replicate(i).Data.RH(RH_step_and_steady_state_idx(1, i):end,1),"LineWidth",1.75, "DisplayName", obj.Replicate(i).Data.file_name)
  
         end 
         xlabel('time (s)','Interpreter',"latex")
         ylabel('Relative Humidity [\%]', 'Interpreter',"latex")
         legend('Location','SouthEast')
-        title("Truncated Steady-State RH Curves")
-        hold off
+        
+        ss_time = obj.Replicate(1).Data.starting_time_minutes  ;
+        str = sprintf('%d', ss_time);
+        title({"Truncated RH Curves", "Steady-State Time of " + str + " Minutes"}) 
+        hold off 
 
         end 
         
         function Create_Baseline(obj)
         % IMPOSED FLUX DATA CREATION
-        rh_idx = obj.Replicate(1).Data.RH_step_idx_Local;
+        rh_idx = obj.Replicate(1).Data.RH_step_and_steady_state_idx;
         ss_idx = obj.Replicate(1).Data.steady_state_index;
 
         % Use first replicate as the official baseline heat flux
@@ -179,7 +182,7 @@ classdef Naylor_Material < handle  % objects by reference, handle class
 
 
             for i =1:obj.file_count
-            rh_idx = obj.Replicate(i).Data.RH_step_idx_Local; 
+            rh_idx = obj.Replicate(i).Data.RH_step_and_steady_state_idx; 
             ss_index = obj.Replicate(i).Data.steady_state_index;
             time = obj.Replicate(i).Data.Time(rh_idx:end, 1);
             
@@ -317,16 +320,21 @@ classdef Naylor_Material < handle  % objects by reference, handle class
         function Predict(obj)
             
             models_used = Check_Model(obj);
+            n_models = length(models_used);
 
             for i=1:obj.file_count
-                model_predict_flux = zeros(length(obj.Replicate(i).Imposed_Data.Time) - 1 ,length(models_used));
-                model_pred_inverted_flux = zeros(length(obj.Replicate(i).Imposed_Data.Time) - 1,length(models_used));
+                model_predict_flux = zeros(length(obj.Replicate(i).Imposed_Data.Time) - 1 , n_models);
+                model_pred_inverted_flux = zeros(length(obj.Replicate(i).Imposed_Data.Time) - 1, n_models);
+                baseline_results = zeros(length(obj.Replicate(i).Imposed_Data.Time) - 1, n_models);
+                adjusted_area = zeros(1, n_models);
                 
                 % New Instance of class
                 pass_data = [obj.Replicate(i).Imposed_Data.Time, obj.Replicate(i).Imposed_Data.HeatFlux, obj.Replicate(i).Imposed_Data.Temp, obj.Replicate(i).Imposed_Data.RH];
                 obj.Replicate(i).Predicted_Data = Naylor_Replicate_Basic(pass_data, obj.Replicate(i).Data.file_name, obj.Replicate(i).Data.steady_state_index);
                 
                 try 
+                obj.Replicate(i).Predicted_Data.addprop('Integration_Baseline');
+                obj.Replicate(i).Predicted_Data.addprop('Integration_values');
                 obj.Replicate(i).Predicted_Data.addprop('HeatFlux_Model_Predictions');
                 obj.Replicate(i).Predicted_Data.addprop('HeatFlux_Model_Predictions_Inverted');
                 obj.Replicate(i).Predicted_Data.addprop('RH_STEP');
@@ -336,11 +344,12 @@ classdef Naylor_Material < handle  % objects by reference, handle class
                     
                 n_original_rep = length(obj.Replicate(i).Imposed_Data.Time);
                 
-                ss_index = obj.Replicate(i).Imposed_Data.steady_state_index;
-
+                ss_index = obj.Replicate(i).Imposed_Data.steady_state_index + 1; % model now starts at t=0 not t=10 seconds, needs extra index
+                
+                RH = obj.Replicate(i).Imposed_Data.RH;
                 Temp = obj.Replicate(i).Imposed_Data.Temp;
-                new_RH_ss = obj.Replicate(i).Imposed_Data.RH(1,1) * ones(ss_index, 1);
-                new_RH_step = max(obj.Replicate(i).Imposed_Data.RH) * ones(n_original_rep - ss_index, 1);
+                new_RH_ss = mean(RH(1:ss_index,1)) * ones(ss_index, 1);
+                new_RH_step = max(RH) * ones(n_original_rep - ss_index, 1);
                 new_RH = [new_RH_ss; new_RH_step]; % concatenate vertically 
                 
                 obj.Replicate(i).Predicted_Data.RH_STEP = new_RH;
@@ -350,17 +359,30 @@ classdef Naylor_Material < handle  % objects by reference, handle class
                 HF0 = mean(original_HeatFlux(1:ss_index));
                 
                 for ii=1:length(models_used)
+                    Time = obj.Replicate(i).Imposed_Data.Time(1:end-1);
                     model_ob = obj.Replicate(i).(models_used{ii});
                     params = model_ob.Best_Convolution_Model_Params;
+                    
+        % overwrite naylor function with the time domain for the prediction
+                    model_ob.Naylor_Function = @(params)model_ob.Naylor_Base_Function(params, Time); 
                     predicted_flux =  model_ob.naylor_curve(params, Temp, ss_index, HF0, RHdiff ); 
+                    
+                    
                     model_predict_flux(:, ii) = predicted_flux;
                    
                     inverted_pred_flux = Naylor_Material.inverter(predicted_flux, [], 1);  % dont pass baseline, use index of 1
                     model_pred_inverted_flux(:, ii) = inverted_pred_flux;
                     
+                    
+                    [~, new_step_index] = Naylor_Material.step_changer(inverted_pred_flux, 1, ss_index, false, []);
+                    [baseline_results(:, ii), adjusted_area(1, ii)] = Convolution_Model.integrate_flux(inverted_pred_flux, Time, new_step_index);  
+                    
+                    
                 end 
                 obj.Replicate(i).Predicted_Data.HeatFlux_Model_Predictions = array2table(model_predict_flux,'VariableNames', models_used);
                 obj.Replicate(i).Predicted_Data.HeatFlux_Model_Predictions_Inverted = array2table(model_pred_inverted_flux, 'VariableNames', models_used);
+                obj.Replicate(i).Predicted_Data.Integration_Baseline = array2table(baseline_results, 'VariableNames', models_used);
+                obj.Replicate(i).Predicted_Data.Integration_values = array2table(adjusted_area, 'VariableNames', models_used);
                                  
             end 
             
@@ -368,9 +390,67 @@ classdef Naylor_Material < handle  % objects by reference, handle class
         
         function Plot_Prediction(obj)
             models_used = Check_Model(obj);
+            n_models = length(models_used);
+            corrected_model_names = cell(1, n_models);
             
-            for i=1:obj.file_count
+            for i=1:n_models
+                corrected_model_names{i} = strrep(models_used{i}, "_", " ");
+            end 
+            
+            for i=1:obj.file_count 
+                Time = obj.Replicate(i).Predicted_Data.Time;
+                RH_STEP = obj.Replicate(i).Predicted_Data.RH_STEP;
+    %             BEST_HF_MODEL = obj.Replicate(i).Imposed_Data.Model_Prediction;
+                file_name = obj.Replicate(i).Imposed_Data.file_name;
+                Predicted_HeatFlux = table2array(obj.Replicate(i).Predicted_Data.HeatFlux_Model_Predictions);
+                Predicted_HeatFlux_Inverted = table2array(obj.Replicate(i).Predicted_Data.HeatFlux_Model_Predictions_Inverted);
+                Y_baselines = table2array(obj.Replicate(i).Predicted_Data.Integration_Baseline);
+                ss_index = obj.Replicate(i).Imposed_Data.steady_state_index + 1;
+
+                figure(i+10);clf
+                subplot(2,1,1);
+                hold on
+
+                for ii = 1:n_models
+                    plot(Time(1:end-1), Predicted_HeatFlux(:,ii), "DisplayName",corrected_model_names{ii}, "Color" ,obj.colors{ii+1}  ,"LineWidth", 1.8, "LineStyle", ":")
+                end 
+                xlabel('Time (s)',"Interpreter","latex")
+                ylabel('Heat Flux $\frac{W}{m^2}$',"Interpreter","latex")
+                lgd1 = legend("Interpreter", 'none');
+                lgd1.Location = 'southeast';
+                title({file_name, "Predicted Step-Change Convolution Model Results"})
+                hold off
+
+                subplot(2,1,2);
+                plot(Time,RH_STEP,"Color",obj.colors{end},"LineWidth",2,"DisplayName","Relative Humidity [%]")
+                xlabel('Time (s)',"Interpreter","latex")
+                ylabel('RH [\%]',"Interpreter","latex")
+                lgd2 = legend();
+                lgd2.Location = 'southeast';
                 
+                
+                figure(i+20);clf
+                subplot(2,1,1);
+                hold on
+
+                for ii = 1:n_models
+                    plot(Time(1:end-1), Predicted_HeatFlux_Inverted(:,ii), "DisplayName",corrected_model_names{ii}, "Color" ,obj.colors{ii+1}  ,"LineWidth", 1.8, "LineStyle", "-")
+                    plot(Time(ss_index:end-1), Y_baselines(ss_index: end, ii),'LineStyle', ':', "Color", 'k',"LineWidth", 2,"DisplayName","Integrating Baseline")
+                end 
+               
+                xlabel('Time (s)',"Interpreter","latex")
+                ylabel({'Heat Flux',  ' $(Exotherm \rightarrow) \  \frac{W}{m^2}$'},"Interpreter","latex")
+                lgd1 = legend("Interpreter", 'none');
+                lgd1.Location = 'southeast';
+                title({file_name, "Predicted Step-Change Convolution Model Results"})
+                hold off
+
+                subplot(2,1,2);
+                plot(Time,RH_STEP,"Color",obj.colors{end},"LineWidth",2,"DisplayName","Relative Humidity [%]")
+                xlabel('Time (s)',"Interpreter","latex")
+                ylabel('RH [\%]',"Interpreter","latex")
+                lgd2 = legend();
+                lgd2.Location = 'southeast';
                 
                 
             end 

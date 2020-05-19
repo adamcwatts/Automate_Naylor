@@ -12,6 +12,7 @@ classdef Convolution_Model < handle
         Initial_Guesses = 30
         n_params
         Naylor_Function
+        Naylor_Base_Function
     end
     
     methods(Static)
@@ -31,6 +32,20 @@ classdef Convolution_Model < handle
         TE = 1*(ff*(1-exp(-Time/tau1)) + fs*(1-exp(-Time/tau2))).*K.*exp(-Time/tauReg);
 
         end
+        
+        function [baseline_results, adjusted_area] = integrate_flux(up_flux, time, step_index)
+            
+        area_to_negate = 1/2 * up_flux(end) * (time(end)-time(step_index)) * 10^-3;
+        total_area = trapz(time(step_index:end), up_flux(step_index:end)) * 10^-3;  % kj /m^2
+        adjusted_area = total_area - area_to_negate; % kj / m^2
+
+ 
+        slope = (up_flux(end) - up_flux(step_index)) /(time(end) - time(step_index));
+        baseline_function = @(t) up_flux(end) + slope.*(t - time(end));
+        baseline_results = baseline_function(time);
+        
+
+        end 
     end 
     
     methods
@@ -45,28 +60,36 @@ classdef Convolution_Model < handle
            
             switch fit_type
             case 'rational_22'
-                obj.Naylor_Function =  @(p)(p(1).*Time.^2 + p(2).*Time + p(3)) ./ (Time.^2 + p(4).*Time.^1 + p(5));
+                obj.Naylor_Base_Function =  @(p, Time)(p(1).*Time.^2 + p(2).*Time + p(3)) ./ (Time.^2 + p(4).*Time.^1 + p(5));
+                obj.Naylor_Function =@(p)obj.Naylor_Base_Function(p, Time);
                 obj.n_params =  5;
                 obj.Model_Choice = 'Rational 2,2 Polynomial';
             case 'rational_33'
-                obj.Naylor_Function =  @(p)(p(1).*Time.^3 + p(2).*Time.^2 + p(3).*Time + p(4)) ./ (Time.^3 + p(5).*Time.^2 + p(6).*Time.^1 + p(7));
+                obj.Naylor_Base_Function =  @(p, Time)(p(1).*Time.^3 + p(2).*Time.^2 + p(3).*Time + p(4)) ./ (Time.^3 + p(5).*Time.^2 + p(6).*Time.^1 + p(7));
+                obj.Naylor_Function =@(p)obj.Naylor_Base_Function(p, Time);
                 obj.n_params =  7;
                 obj.Model_Choice = 'Rational 3,3 Polynomial';
             case 'rational_43'
-                obj.Naylor_Function = @(p)(p(1).*Time.^3 + p(2).*Time.^2 + p(3).*Time + p(4)) ./ (Time.^4 + p(5).*Time.^3 + p(6).*Time.^2 + p(7).*Time + p(8));
+                obj.Naylor_Base_Function = @(p, Time)(p(1).*Time.^3 + p(2).*Time.^2 + p(3).*Time + p(4)) ./ (Time.^4 + p(5).*Time.^3 + p(6).*Time.^2 + p(7).*Time + p(8));
+                obj.Naylor_Function =@(p)obj.Naylor_Base_Function(p, Time);
                 obj.n_params =  8;
                 obj.Model_Choice = 'Rational 4,3 Polynomial';
             case 'rational_55'
-                obj.Naylor_Function = @(p) (p(1).*Time.^5 + p(2).*Time.^4 + p(3).*Time.^3 + p(4).*Time.^2 + p(5).*Time + p(6)) ./...
-                       (Time.^5 + p(7).*Time.^4 + p(8).*Time.^3 + p(9).*Time.^2 + p(10).*Time + p(11));
+               obj.Naylor_Base_Function = @(p, Time) (p(1).*Time.^5 + p(2).*Time.^4 + p(3).*Time.^3 + p(4).*Time.^2 + p(5).*Time + p(6)) ./...
+                       (Time.^5 + p(7).*Time.^4 + p(8).*Time.^3 + p(9).*Time.^2 + p(10).*Time + p(11));   
+                   
+               obj.Naylor_Function = @(p)obj.Naylor_Base_Function(p, Time);   
                obj.n_params =  11;
                obj.Model_Choice = 'Rational 5,5 Polynomial';
             case 'poly4'
-                obj.Naylor_Function = @(p) p(1).*Time^.4 + p(2).*Time.^3 + p(3).*Time.^2 + p(4).*Time + p(5);
+                obj.Naylor_Base_Function = @(p,time) p(1).*Time.^4 + p(2).*Time.^3 + p(3).*Time.^2 + p(4).*Time + p(5);
+                obj.Naylor_Function = @(p) p(1).*Time.^4 + p(2).*Time.^3 + p(3).*Time.^2 + p(4).*Time + p(5);
                 obj.n_params =  5;
                 obj.Model_Choice = '4th Degree Polynomial';
             case 'three_exponentials'
-                obj.Naylor_Function = @(p)Convolution_Model.triple_exp(p,Time);  % simply function down to just 1 variable for the model parameters
+                obj.Naylor_Base_Function = @Convolution_Model.triple_exp;
+                obj.Naylor_Function = @(p)obj.Naylor_Base_Function(p, Time);  % simply function down to just 1 variable for the model parameters
+                
                 obj.n_params =  5;
                 obj.Model_Choice = 'Three Exponentials';
             end 
@@ -126,7 +149,11 @@ classdef Convolution_Model < handle
 
         function HFmodel = naylor_curve(obj, params, Temp, ss_idx, HF0, RHdiff)
 
-            Naylor_Result = obj.Naylor_Function(params);
+            Naylor_Result = obj.Naylor_Function(params); % function of only the parameters
+            if abs(Naylor_Result(1)) >= 1e-6
+                Naylor_Result(1)=0; % at time = 0 function must be 0 (piece wise function forcing)
+            end 
+            
             tester = conv(RHdiff,Naylor_Result,'full');  % convolve 2 vectors together: output length is length(RHdiff)+length(Naylor)-1
             nn=length(tester);
     %         T_end = Time(end);
@@ -148,8 +175,6 @@ classdef Convolution_Model < handle
         end 
         
         
-        function total_sum = integrate_flux(obj)
-        end 
     end 
         
 end

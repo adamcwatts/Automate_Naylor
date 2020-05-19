@@ -20,8 +20,8 @@ classdef Naylor_Replicate
         RH_step_and_steady_state_idx {int32}
         RH_step_and_steady_state_time
         
-        RH_step_idx_Global {int32}
-        RH_step_time_Global
+        RH_step_idx {int32}
+        RH_step_time
         
     end 
    
