@@ -10,9 +10,12 @@ classdef Convolution_Model < handle
         Best_Convolution_Model_Params
         Model_Fit
         Initial_Guesses = 30
-        n_params
         Naylor_Function
         Naylor_Base_Function
+        n_params
+        n_params_UB   % upper bound for parameter constraints
+        n_params_LB   % lower bound for parameter constraints
+        n_params_custom
     end
     
     methods(Static)
@@ -89,9 +92,18 @@ classdef Convolution_Model < handle
             case 'three_exponentials'
                 obj.Naylor_Base_Function = @Convolution_Model.triple_exp;
                 obj.Naylor_Function = @(p)obj.Naylor_Base_Function(p, Time);  % simply function down to just 1 variable for the model parameters
-                
                 obj.n_params =  5;
                 obj.Model_Choice = 'Three Exponentials';
+                
+                % modify ff (parameter(1)) so upper bound is 1
+                obj.n_params_custom = false; 
+            end 
+            
+            obj.n_params_LB = 1e-6*ones(1, obj.n_params);
+            obj.n_params_UB = 1e+10*ones(1, obj.n_params);
+            
+            if (strcmp(fit_type, 'three_exponentials') && obj.n_params_custom) 
+                obj.n_params_UB(1,1) = 1;
             end 
             
             
@@ -121,9 +133,11 @@ classdef Convolution_Model < handle
 %             test_result = optimize_naylor(obj, X0(1, :), Temp, ss_idx, HF0, RHdiff, HeatFlux)
             naylor_trunc = @(p)optimize_naylor(obj, p, Temp, ss_idx, HF0, RHdiff, HeatFlux);  % returns the non-linear least squares as only a function of p, the parameters
     
-            lower_lim = 1e-6*ones(1, obj.n_params);
+            LB = obj.n_params_LB;  % Lower Bound 
+            UB = obj.n_params_UB;  % Upper Bound
+
             parfor j=1:N
-                opt_array(j,:) = fmincon(@(p)naylor_trunc(p), X0(j,:), [],[],[],[], lower_lim,[],[], fmin_options);
+                opt_array(j,:) = fmincon(@(p)naylor_trunc(p), X0(j,:), [],[],[],[], LB, UB,[], fmin_options);
 %                         opt_array(j,:) = fmincon(@(x)Naylor_Material.optimize_naylor(x,Time,Temp,ss_idx, HF0, RHdiff, HeatFlux), X0(j,:), [],[],[],[],[0, 1e-6, 1e-6, 0, 1e-6],[],[],fmin_options);
 
             end

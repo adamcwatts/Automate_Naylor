@@ -1,10 +1,12 @@
 classdef Naylor_Material < handle  % objects by reference, handle class 
-    %UNTITLED2 Summary of this class goes here
+    % 5/19/2020 : Written by Adam C. Watts
     %   Detailed explanation goes here
     
     properties
         Replicate
         file_count   % file count
+        Compiled_Model_Parameters
+        Compiled_Predictions_Integrated
         baseline_flux  % Using 1st replicate
         colors = {[0, 0.4470, 0.7410],... 
         [0.8500, 0.3250, 0.0980],...
@@ -250,7 +252,7 @@ classdef Naylor_Material < handle  % objects by reference, handle class
             for i=1:obj.file_count
                 Time = obj.Replicate(i).Imposed_Data.Time;
                 obj.Replicate(i).(fit_type) = Convolution_Model(n_guesses, fit_type, Time);  % Instantiate Model Predictor
-                obj.Replicate(i).(fit_type).Stochastic_Solver(obj.Replicate(i).Imposed_Data)
+                obj.Replicate(i).(fit_type).Stochastic_Solver(obj.Replicate(i).Imposed_Data) % Runs Stochastic Solver
             end 
             
         end 
@@ -454,12 +456,56 @@ classdef Naylor_Material < handle  % objects by reference, handle class
                 
                 
             end 
+        end
+        
+        function Compile_Results(obj)
+           models_used = Check_Model(obj);
+           n_models = length(models_used); 
+           
+           model_param_counts = zeros(1, n_models);
+    
+           for i=1:length(models_used)
+               model_param_counts(1, i) = obj.Replicate(1).(models_used{i}).n_params;
+           end 
+          column_count = sum(model_param_counts);  % total columns for parameters
+           
+%           param_array = zeros(obj.file_count, column_count); % instantiate empty array
+          
+          param_cell = cell(obj.file_count, n_models);
+          predict_cell = zeros(obj.file_count, n_models);
+          
+          for i=1:obj.file_count
+              predict_cell(i, :) = table2array(obj.Replicate(i).Predicted_Data.Integration_values);
+              for ii=1:n_models
+                  param_cell{i, ii} = obj.Replicate(i).(models_used{ii}).Best_Convolution_Model_Params;
+                  
+              end 
+          end 
+          
+          
+           
+%            for i=1:obj.file_count
+%                row_of_params = zeros(1, column_count);
+%                idx_b = 1;
+%                idx_e = model_param_counts(1);
+%                for ii=1:n_models
+%                    row_of_params(1, idx_b:idx_e) = obj.Replicate(i).(models_used{ii}).Best_Convolution_Model_Params;
+%                    
+%                    if ii <= n_models-1
+%                    idx_b = idx_b + idx_e;
+% 
+%                    idx_e = idx_e +  model_param_counts(ii + 1);
+%                    end 
+%                    
+%                end 
+%                param_array(i, :) = row_of_params;
+%                
+%            end 
+           
+           obj.Compiled_Model_Parameters = cell2table(param_cell,'VariableNames', models_used);
+           obj.Compiled_Predictions_Integrated = array2table(predict_cell,'VariableNames', models_used);
         end 
         
-
-        
-        
-
     end
 end
 
