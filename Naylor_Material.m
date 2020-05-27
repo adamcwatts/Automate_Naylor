@@ -1,9 +1,13 @@
 classdef Naylor_Material < handle  % objects by reference, handle class 
-    % 5/19/2020 : Written by Adam C. Watts
-    %   Detailed explanation goes here
+    %{
+    Written by Adam C. Watts
+    5/26/2020 : Added export results() static method for easy export and compilation of integrated baseline results 
+    5/19/2020 : Completed Class
+    %}
     
     properties
         Replicate
+        material_info 
         file_count   % file count
         Compiled_Model_Parameters
         Compiled_Predictions_Integrated
@@ -19,6 +23,63 @@ classdef Naylor_Material < handle  % objects by reference, handle class
     end
     
     methods(Static)
+        function export_results()
+            
+            % call whos function in the base workspace 
+            s = evalin('base', 'whos'); 
+            
+            % find the objects with the type 'Naylor_Material' from the workspace:
+            matches= strcmp({s.class}, 'Naylor_Material');
+            my_class_variables = {s(matches).name};
+            n_classes = length(my_class_variables);
+            
+   
+            n_max_replicates = 0;
+            all_method_names = {};
+            
+            % Find how many unique function methods was used and maximum
+            % file count for each class instance
+            for var = my_class_variables
+                ob =  evalin('base', var{1});
+                method_names = ob.Compiled_Predictions_Integrated.Properties.VariableNames;
+                size_of_names = size(method_names, 2);
+  
+                if size_of_names > size(all_method_names, 2)
+                      all_method_names = cat(2,all_method_names, method_names);
+                      all_method_names = unique(all_method_names);
+                end 
+                
+                if ob.file_count > n_max_replicates
+                    n_max_replicates = ob.file_count;
+                    
+                end 
+            end 
+            
+            n_methods = length(all_method_names);
+            master_data =  nan(n_max_replicates, n_classes, n_methods);
+            
+            
+            for i = 1:size(all_method_names,2)
+                for k = 1:size(my_class_variables, 2)
+                    ob =  evalin('base', my_class_variables{k});
+                    mask = cellfun(@(s) contains(all_method_names{i}, s), ob.Compiled_Predictions_Integrated.Properties.VariableNames);
+                    
+                    if any(mask)
+                        master_data(1:ob.file_count, k, i) = ob.Compiled_Predictions_Integrated.(all_method_names{i});
+                    end
+                    
+                end 
+                
+                % Create table with for each function method using all replicates and class instances 
+                T = array2table(master_data(1:ob.file_count, :, i),'VariableNames', my_class_variables);
+                fn ="Integrated_Flux_" + all_method_names{i} + ".csv";
+                writetable(T,fn);
+                disp("Exported: " + fn)
+            end 
+            
+             
+        end 
+        
         function [RH_step_and_steady_state_idx, RH_step_idx] = step_changer(Data, starting_idx, ss_index, smooth_opt, span)
             %{
 
@@ -481,27 +542,7 @@ classdef Naylor_Material < handle  % objects by reference, handle class
                   
               end 
           end 
-          
-          
-           
-%            for i=1:obj.file_count
-%                row_of_params = zeros(1, column_count);
-%                idx_b = 1;
-%                idx_e = model_param_counts(1);
-%                for ii=1:n_models
-%                    row_of_params(1, idx_b:idx_e) = obj.Replicate(i).(models_used{ii}).Best_Convolution_Model_Params;
-%                    
-%                    if ii <= n_models-1
-%                    idx_b = idx_b + idx_e;
-% 
-%                    idx_e = idx_e +  model_param_counts(ii + 1);
-%                    end 
-%                    
-%                end 
-%                param_array(i, :) = row_of_params;
-%                
-%            end 
-           
+        
            obj.Compiled_Model_Parameters = cell2table(param_cell,'VariableNames', models_used);
            obj.Compiled_Predictions_Integrated = array2table(predict_cell,'VariableNames', models_used);
         end 
