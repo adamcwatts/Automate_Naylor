@@ -5,6 +5,7 @@ classdef ISO_Replicate < handle
     properties
         Time
         Temp
+        Temp_Baselined
         Air_Temp
         RH
         delta_Temp_raw
@@ -15,6 +16,7 @@ classdef ISO_Replicate < handle
         Phi_step_idx
         Phi_Integrated_Area
         Phi_Integrated_Reference
+        Energy_Joules
  
     
     end
@@ -76,17 +78,17 @@ classdef ISO_Replicate < handle
         step_index = obj.Phi_step_idx;
             
             
-        area_to_negate = 1/2 * Phi_Base(end) * (time(end)-time(step_index)) * 10^-3;
-        total_area = trapz(time(step_index + 1:end), Phi_Base(step_index:end)) * 10^-3;  % kj /m^2
-        adjusted_area = total_area - area_to_negate; % kj / m^2
+        area_to_negate = 1/2 * Phi_Base(end) * (time(end)-time(step_index)) ;
+        total_area = trapz(time(step_index + 1:end), Phi_Base(step_index:end)) ;  % j /m^2
+        adjusted_area = total_area - area_to_negate; % j / m^2
 
  
         slope = (Phi_Base(end) - Phi_Base(step_index)) /(time(end) - time(step_index + 1));
         baseline_function = @(t) Phi_Base(end) + slope.*(t - t(end));
         Reference_results = baseline_function(time);
         
-        obj.Phi_Integrated_Area = adjusted_area;
-        obj.Phi_Integrated_Reference = Reference_results;
+        obj.Phi_Integrated_Area = adjusted_area; % j / m^2
+        obj.Phi_Integrated_Reference = Reference_results; % j / m^2 baseline vector used for integration
        end
         
         

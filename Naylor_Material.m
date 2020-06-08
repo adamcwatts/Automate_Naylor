@@ -7,10 +7,15 @@ classdef Naylor_Material < handle  % objects by reference, handle class
     
     properties
         Replicate
-        material_info 
+        material_info
+        Area_m
+        Weight_Density_g_m_sq
+        regain_EQ
+        Energy_Theoretical
         file_count   % file count
         Compiled_Model_Parameters
         Compiled_Predictions_Integrated
+        Compiled_Predictions_Energy_Joules
         baseline_flux  % Using 1st replicate
         colors = {[0, 0.4470, 0.7410],... 
         [0.8500, 0.3250, 0.0980],...
@@ -56,8 +61,10 @@ classdef Naylor_Material < handle  % objects by reference, handle class
             end 
             
             n_methods = length(all_method_names);
-            master_data =  nan(n_max_replicates, n_classes, n_methods);
-            
+            master_data_Normalized =  nan(n_max_replicates, n_classes, n_methods);
+            master_data_E = nan(n_max_replicates, n_classes, n_methods);
+            master_data_theory = nan(n_methods, n_classes);
+
             
             for i = 1:size(all_method_names,2)
                 for k = 1:size(my_class_variables, 2)
@@ -65,16 +72,31 @@ classdef Naylor_Material < handle  % objects by reference, handle class
                     mask = cellfun(@(s) contains(all_method_names{i}, s), ob.Compiled_Predictions_Integrated.Properties.VariableNames);
                     
                     if any(mask)
-                        master_data(1:ob.file_count, k, i) = ob.Compiled_Predictions_Integrated.(all_method_names{i});
+                        master_data_Normalized(1:ob.file_count, k, i) = ob.Compiled_Predictions_Integrated.(all_method_names{i});
+                        master_data_E(1:ob.file_count, k, i) = ob.Compiled_Predictions_Energy_Joules.(all_method_names{i});
+                        master_data_theory(i, k) = ob.Energy_Theoretical;   
                     end
-                    
+                  
                 end 
                 
                 % Create table with for each function method using all replicates and class instances 
-                T = array2table(master_data(1:ob.file_count, :, i),'VariableNames', my_class_variables);
-                fn ="Integrated_Flux_" + all_method_names{i} + ".csv";
-                writetable(T,fn);
-                disp("Exported: " + fn)
+                T_Norm = array2table(master_data_Normalized(1:ob.file_count, :, i),'VariableNames', my_class_variables);
+                fn_Norm = "Integrated_Flux_Area_Normalized_" + all_method_names{i} + "_NAYLOR.csv";
+                writetable(T_Norm, fn_Norm);
+                disp("Exported: " + fn_Norm)
+                
+                T_E =  array2table(master_data_E(1:ob.file_count, :, i),'VariableNames', my_class_variables);
+                fn_E = "Integrated_Flux_Energy_" + all_method_names{i} + "_NAYLOR.csv";
+                writetable(T_E, fn_E);
+                disp("Exported: " + fn_E)
+                
+                T_theory =  array2table(master_data_theory(i, :),'VariableNames', my_class_variables);
+                fn_theory = "Integrated_Flux_Energy_Theory_" + all_method_names{i} + "_NAYLOR.csv";
+                writetable(T_theory, fn_theory);
+                disp("Exported: " + fn_theory)
+                
+                
+                
             end 
             
              
@@ -148,10 +170,10 @@ classdef Naylor_Material < handle  % objects by reference, handle class
     
     methods
         % Intialize material with naylor replicate class 
-        function obj = Naylor_Material(file_path_locations_of_reps)
+        function obj = Naylor_Material(file_path_locations_of_reps, length_cm)
             FPLR = file_path_locations_of_reps;
             obj.file_count = length(FPLR); % File Count
-            
+            obj.Area_m = length_cm^2 * (1/100)^2;
            % store replicate objects into structure array 
             for i=1:obj.file_count
                 obj.Replicate(i).Data = Naylor_Replicate(FPLR{i});
@@ -171,8 +193,8 @@ classdef Naylor_Material < handle  % objects by reference, handle class
             obj.Replicate(i).Data.file_name)
         
             end 
-            xlabel('time (s)','Interpreter',"latex")
-            ylabel({'Heat Flux due to Sorption' '$\frac{W}{m^2}$'}, 'Interpreter',"latex")
+            xlabel('time [s]','Interpreter',"latex")
+            ylabel({'Heat Flux due to Sorption' '$[\frac{W}{m^2}]$'}, 'Interpreter',"latex")
             legend()
             title("Raw Heat Flux vs Time Data")
             hold off
@@ -186,7 +208,7 @@ classdef Naylor_Material < handle  % objects by reference, handle class
                 "LineWidth",1.75, "DisplayName",...
                 obj.Replicate(i).Data.file_name)
             end 
-            xlabel('time (s)','Interpreter',"latex")
+            xlabel('time [s]','Interpreter',"latex")
             ylabel('Relative Humidity [\%]', 'Interpreter',"latex")
             legend('Location','SouthEast')
             title("Raw RH vs Time Data")
@@ -223,7 +245,7 @@ classdef Naylor_Material < handle  % objects by reference, handle class
             plot(obj.Replicate(i).Data.Time(RH_step_and_steady_state_idx(1, i):end, 1), obj.Replicate(i).Data.RH(RH_step_and_steady_state_idx(1, i):end,1),"LineWidth",1.75, "DisplayName", obj.Replicate(i).Data.file_name)
  
         end 
-        xlabel('time (s)','Interpreter',"latex")
+        xlabel('time [s]','Interpreter',"latex")
         ylabel('Relative Humidity [\%]', 'Interpreter',"latex")
         legend('Location','SouthEast')
         
@@ -283,8 +305,8 @@ classdef Naylor_Material < handle  % objects by reference, handle class
         for i =1:obj.file_count
         plot(obj.Replicate(i).Imposed_Data.Time, obj.Replicate(i).Imposed_Data.HeatFlux,"LineWidth",1.75,"Color", obj.colors{i}, "DisplayName", obj.Replicate(i).Imposed_Data.file_name)
         end 
-        xlabel('time (s)','Interpreter',"latex")
-        ylabel({'Heat Flux due to Sorption' '$\frac{W}{m^2}$'}, 'Interpreter',"latex")
+        xlabel('time [s]','Interpreter',"latex")
+        ylabel({'Heat Flux due to Sorption' '$[\frac{W}{m^2}]$'}, 'Interpreter',"latex")
         legend()
         plot(obj.Replicate(i).Imposed_Data.Time, obj.baseline_flux*ones(1,length(obj.Replicate(i).Imposed_Data.Time)), "Color", 'k',"LineStyle" ,':',"LineWidth", 1.75 ,"DisplayName", 'Baseline')
         title("Superimposed Heat Flux vs Time")
@@ -296,7 +318,7 @@ classdef Naylor_Material < handle  % objects by reference, handle class
         for i =1:obj.file_count
         plot(obj.Replicate(i).Imposed_Data.Time, obj.Replicate(i).Imposed_Data.RH, "LineWidth",1.75,"Color",obj.colors{i}, "DisplayName", obj.Replicate(i).Imposed_Data.file_name)
         end 
-        xlabel('time (s)','Interpreter',"latex")
+        xlabel('time [s]','Interpreter',"latex")
         ylabel('Relative Humidity [\%]', 'Interpreter',"latex")
         legend('Location','SouthEast')
         title("Superimposed RH vs Time")
@@ -359,11 +381,13 @@ classdef Naylor_Material < handle  % objects by reference, handle class
             plot(Time, HeatFlux,'r',"DisplayName", "Raw Data: " + file_name,"LineWidth",1.5,"Color", obj.colors{1})
             
             for ii = 1:length(models_used)
-                plot(Time(1:end-1), obj.Replicate(i).(models_used{ii}).Model_Fit, "DisplayName",obj.Replicate(i).(models_used{ii}).Model_Choice, "Color" ,obj.colors{ii+1}  ,"LineWidth", 1.8, "LineStyle", ":")
+              plot(Time(1:end-1), obj.Replicate(i).(models_used{ii}).Model_Fit, "DisplayName", "$\hat{\Psi}(t,$\boldmath$\theta$): " + obj.Replicate(i).(models_used{ii}).Model_Choice , "Color" ,obj.colors{ii+1}  ,"LineWidth", 1.8, "LineStyle", ":")
+%               plot(Time(1:end-1), obj.Replicate(i).(models_used{ii}).Model_Fit, "DisplayName",  obj.Replicate(i).(models_used{ii}).Model_Choice, "Color" ,obj.colors{ii+1}  ,"LineWidth", 1.8, "LineStyle", ":")
+
             end 
-            xlabel('Time (s)',"Interpreter","latex")
-            ylabel('Heat Flux $\frac{W}{m^2}$',"Interpreter","latex")
-            lgd1 = legend();
+            xlabel('I',"Interpreter","latex")
+            ylabel('Heat Flux $[\frac{W}{m^2}]$',"Interpreter","latex")
+            lgd1 = legend("Interpreter","latex");
             lgd1.Location = 'southeast';
 %             formatSpec = "Best Fitted Model for " + obj.Replicate(i).Imposed_Data.file_name + "\nUsing %d Stochastic Initial Guesses";
 %             A1 = obj.Replicate(i).Imposed_Data.Initial_Guesses;
@@ -372,10 +396,10 @@ classdef Naylor_Material < handle  % objects by reference, handle class
             hold off
 
             subplot(2,1,2);
-            plot(Time,RH,"Color",obj.colors{end},"LineWidth",2,"DisplayName","Relative Humidity [%]")
-            xlabel('Time (s)',"Interpreter","latex")
+            plot(Time,RH,"Color",obj.colors{end},"LineWidth",2,"DisplayName","Relative Humidity [\%]")
+            xlabel({"II", 'time [s]'},"Interpreter","latex")
             ylabel('RH [\%]',"Interpreter","latex")
-            lgd2 = legend();
+            lgd2 = legend("Interpreter","latex");
             lgd2.Location = 'southeast';
          end 
         end
@@ -436,8 +460,9 @@ classdef Naylor_Material < handle  % objects by reference, handle class
                     inverted_pred_flux = Naylor_Material.inverter(predicted_flux, [], 1);  % dont pass baseline, use index of 1
                     model_pred_inverted_flux(:, ii) = inverted_pred_flux;
                     
+                    new_step_index = ss_index;
                     
-                    [~, new_step_index] = Naylor_Material.step_changer(inverted_pred_flux, 1, ss_index, false, []);
+%                     [~, new_step_index] = Naylor_Material.step_changer(inverted_pred_flux, 1, ss_index, false, []);
                     [baseline_results(:, ii), adjusted_area(1, ii)] = Convolution_Model.integrate_flux(inverted_pred_flux, Time, new_step_index);  
                     
                     
@@ -475,20 +500,23 @@ classdef Naylor_Material < handle  % objects by reference, handle class
                 hold on
 
                 for ii = 1:n_models
-                    plot(Time(1:end-1), Predicted_HeatFlux(:,ii), "DisplayName",corrected_model_names{ii}, "Color" ,obj.colors{ii+1}  ,"LineWidth", 1.8, "LineStyle", ":")
+%                     plot(Time(1:end-1), Predicted_HeatFlux(:,ii), "DisplayName", "$\hat{\Psi}(t,$\boldmath$\theta$): Predicted" + corrected_model_names{ii}, "Color" ,obj.colors{ii+1}  ,"LineWidth", 1.8, "LineStyle", ":")
+                    plot(Time(1:end-1), Predicted_HeatFlux(:,ii), "DisplayName", "$\Psi(t,$\boldmath$\theta$): Predicted with " + corrected_model_names{ii}, "Color" ,obj.colors{ii+1}  ,"LineWidth", 1.8, "LineStyle", ":")
+
                 end 
-                xlabel('Time (s)',"Interpreter","latex")
-                ylabel('Heat Flux $\frac{W}{m^2}$',"Interpreter","latex")
-                lgd1 = legend("Interpreter", 'none');
+                xlabel('I',"Interpreter","latex")
+                ylabel('Heat Flux $[\frac{W}{m^2}]$',"Interpreter","latex")
+%                 ylabel("$\hat{\Psi}(t,$\boldmath$\theta$): Predicted","Interpreter","latex")
+                lgd1 = legend("Interpreter", 'latex');
                 lgd1.Location = 'southeast';
                 title({file_name, "Predicted Step-Change Convolution Model Results"})
                 hold off
 
                 subplot(2,1,2);
-                plot(Time,RH_STEP,"Color",obj.colors{end},"LineWidth",2,"DisplayName","Relative Humidity [%]")
-                xlabel('Time (s)',"Interpreter","latex")
+                plot(Time,RH_STEP,"Color",obj.colors{end},"LineWidth",2,"DisplayName","Relative Humidity [\%]")
+                xlabel({"II", 'time [s]'},"Interpreter","latex")
                 ylabel('RH [\%]',"Interpreter","latex")
-                lgd2 = legend();
+                lgd2 = legend("Interpreter","latex");
                 lgd2.Location = 'southeast';
                 
                 
@@ -497,27 +525,48 @@ classdef Naylor_Material < handle  % objects by reference, handle class
                 hold on
 
                 for ii = 1:n_models
-                    plot(Time(1:end-1), Predicted_HeatFlux_Inverted(:,ii), "DisplayName",corrected_model_names{ii}, "Color" ,obj.colors{ii+1}  ,"LineWidth", 1.8, "LineStyle", "-")
+                    plot(Time(1:end-1), Predicted_HeatFlux_Inverted(:,ii), "DisplayName", "$\Psi(t,$\boldmath$\theta$): Predicted with " + corrected_model_names{ii}, "Color" ,obj.colors{ii+1}  ,"LineWidth", 1.8, "LineStyle", "-")
                     plot(Time(ss_index:end-1), Y_baselines(ss_index: end, ii),'LineStyle', ':', "Color", 'k',"LineWidth", 2,"DisplayName","Integrating Baseline")
                 end 
                
-                xlabel('Time (s)',"Interpreter","latex")
-                ylabel({'Heat Flux',  ' $(Exotherm \rightarrow) \  \frac{W}{m^2}$'},"Interpreter","latex")
-                lgd1 = legend("Interpreter", 'none');
+                xlabel('I',"Interpreter","latex")
+                ylabel({'Heat Flux',  ' $(Exotherm \rightarrow) \  [\frac{W}{m^2}]$'},"Interpreter","latex")
+% % % %                 ylabel("$\hat{\Psi}(t,$\boldmath$\theta$): Predicted","Interpreter","latex")
+                lgd1 = legend("Interpreter", 'latex');
                 lgd1.Location = 'southeast';
                 title({file_name, "Predicted Step-Change Convolution Model Results"})
                 hold off
 
                 subplot(2,1,2);
-                plot(Time,RH_STEP,"Color",obj.colors{end},"LineWidth",2,"DisplayName","Relative Humidity [%]")
-                xlabel('Time (s)',"Interpreter","latex")
+                plot(Time,RH_STEP,"Color",obj.colors{end},"LineWidth",2,"DisplayName","Relative Humidity [\%]")
+                xlabel({"II", 'time [s]'},"Interpreter","latex")
                 ylabel('RH [\%]',"Interpreter","latex")
-                lgd2 = legend();
+                lgd2 = legend("Interpreter","latex");
                 lgd2.Location = 'southeast';
                 
                 
             end 
         end
+        
+        function Calculate_Theoretical_Energy(obj, regain_EQ, RH_initial, RH_final, Weight_Density_g_m_sq)
+            obj.Weight_Density_g_m_sq = Weight_Density_g_m_sq;
+            obj.regain_EQ = regain_EQ;
+            % ALL arguments assumes %
+            regain_EQ = regain_EQ /100;
+            RH_initial = RH_initial / 100;
+            RH_final = RH_final / 100;
+            
+            H_vap = 2418 ; % j/g
+            H_sorp = @(rh) 195 .* (1.0 - rh) .* ((1.0 ./ (0.2 + rh)) + (1.0 ./ (1.05 - rh)));
+            
+            R = @(RH) 0.578 * RH * (1/(0.321 + RH) + 1/(1.262-RH));
+            delta_regain = R(RH_final) - R(RH_initial);
+            mass_vapor = delta_regain * regain_EQ * obj.Area_m * obj.Weight_Density_g_m_sq;  % grams
+            
+            H = H_vap + integral(H_sorp, RH_initial, RH_final); % joules/gram
+            
+            obj.Energy_Theoretical = mass_vapor * H;  % joules
+        end 
         
         function Compile_Results(obj)
            models_used = Check_Model(obj);
@@ -545,6 +594,7 @@ classdef Naylor_Material < handle  % objects by reference, handle class
         
            obj.Compiled_Model_Parameters = cell2table(param_cell,'VariableNames', models_used);
            obj.Compiled_Predictions_Integrated = array2table(predict_cell,'VariableNames', models_used);
+           obj.Compiled_Predictions_Energy_Joules = array2table( obj.Area_m * predict_cell,'VariableNames', models_used);
         end 
         
     end

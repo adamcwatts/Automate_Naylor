@@ -38,9 +38,9 @@ classdef Convolution_Model < handle
         
         function [baseline_results, adjusted_area] = integrate_flux(up_flux, time, step_index)
             
-        area_to_negate = 1/2 * up_flux(end) * (time(end)-time(step_index)) * 10^-3;
-        total_area = trapz(time(step_index:end), up_flux(step_index:end)) * 10^-3;  % kj /m^2
-        adjusted_area = total_area - area_to_negate; % kj / m^2
+        area_to_negate = 1/2 * up_flux(end) * (time(end)-time(step_index));
+        total_area = trapz(time(step_index:end), up_flux(step_index:end));  % j /m^2
+        adjusted_area = total_area - area_to_negate; % j / m^2
 
  
         slope = (up_flux(end) - up_flux(step_index)) /(time(end) - time(step_index));
